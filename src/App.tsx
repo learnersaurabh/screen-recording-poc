@@ -1,43 +1,39 @@
 import './index.css'
-import { useScreenRecorder } from './hooks/useScreenRecorder'
+import { useProctoringRecorder } from './hooks/useProctoringRecorder'
 import { RecordingControls } from './components/RecordingControls'
 import { RecordingsList } from './components/RecordingsList'
 import { UnsupportedBanner, isScreenCaptureSupported } from './components/UnsupportedBanner'
 
 function App() {
   const {
-    isRecording,
-    recordings,
-    keepRecordingOnTabSwitch,
-    setKeepRecordingOnTabSwitch,
+    sessionState,
+    clips,
+    error,
     selectedQuality,
     setSelectedQuality,
-    error,
-    startRecording,
-    stopRecording,
-    removeRecording,
-  } = useScreenRecorder()
+    startSession,
+    endSession,
+    removeClip,
+  } = useProctoringRecorder()
 
   return (
     <div className="app">
       <header className="app-header">
-        <h1>Screen Recorder</h1>
-        <p>Capture your screen and download recordings locally</p>
+        <h1>Proctoring Recorder</h1>
+        <p>Records your screen only when you leave this application</p>
       </header>
 
       {isScreenCaptureSupported() ? (
         <>
           <RecordingControls
-            isRecording={isRecording}
-            keepRecordingOnTabSwitch={keepRecordingOnTabSwitch}
+            sessionState={sessionState}
             selectedQuality={selectedQuality}
             error={error}
-            onStart={startRecording}
-            onStop={stopRecording}
-            onToggleKeepRecording={setKeepRecordingOnTabSwitch}
+            onStart={startSession}
+            onEnd={endSession}
             onQualityChange={setSelectedQuality}
           />
-          <RecordingsList recordings={recordings} onRemove={removeRecording} />
+          <RecordingsList recordings={clips} onRemove={removeClip} />
         </>
       ) : (
         <UnsupportedBanner />

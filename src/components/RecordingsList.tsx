@@ -1,4 +1,4 @@
-import type { Recording } from '../hooks/useScreenRecorder'
+import type { Recording } from '../hooks/useProctoringRecorder'
 
 interface Props {
   recordings: Recording[]

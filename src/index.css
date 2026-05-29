@@ -181,6 +181,13 @@ body {
 }
 .btn-stop:hover { background: var(--danger-hover); }
 
+.btn-end {
+  background: var(--surface-2);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+.btn-end:hover { border-color: var(--danger); color: var(--danger); }
+
 .btn-download {
   background: var(--success);
   color: #fff;
@@ -200,6 +207,23 @@ body {
   align-items: center;
   gap: 1rem;
   flex-wrap: wrap;
+}
+
+.monitoring-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.monitoring-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--text-muted);
+  animation: pulse 1.8s ease-in-out infinite;
 }
 
 .recording-indicator {

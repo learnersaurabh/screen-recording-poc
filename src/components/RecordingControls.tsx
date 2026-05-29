@@ -1,26 +1,25 @@
-import { QUALITY_PRESETS } from '../hooks/useScreenRecorder'
+import type { SessionState } from '../hooks/useProctoringRecorder'
+import { QUALITY_PRESETS } from '../hooks/useProctoringRecorder'
 
 interface Props {
-  isRecording: boolean
-  keepRecordingOnTabSwitch: boolean
+  sessionState: SessionState
   selectedQuality: number
   error: string | null
   onStart: () => void
-  onStop: () => void
-  onToggleKeepRecording: (val: boolean) => void
+  onEnd: () => void
   onQualityChange: (index: number) => void
 }
 
 export function RecordingControls({
-  isRecording,
-  keepRecordingOnTabSwitch,
+  sessionState,
   selectedQuality,
   error,
   onStart,
-  onStop,
-  onToggleKeepRecording,
+  onEnd,
   onQualityChange,
 }: Props) {
+  const isActive = sessionState !== 'idle'
+
   return (
     <div className="controls-card">
       <div className="controls-row">
@@ -32,7 +31,7 @@ export function RecordingControls({
             id="quality-select"
             value={selectedQuality}
             onChange={(e) => onQualityChange(Number(e.target.value))}
-            disabled={isRecording}
+            disabled={isActive}
             className="quality-select"
           >
             {QUALITY_PRESETS.map((preset, i) => (
@@ -42,40 +41,32 @@ export function RecordingControls({
             ))}
           </select>
         </div>
-
-        <div className="toggle-group">
-          <label className="field-label" htmlFor="keep-recording-toggle">
-            Record when tab is hidden
-          </label>
-          <button
-            id="keep-recording-toggle"
-            role="switch"
-            aria-checked={keepRecordingOnTabSwitch}
-            className={`toggle-btn ${keepRecordingOnTabSwitch ? 'toggle-on' : 'toggle-off'}`}
-            onClick={() => onToggleKeepRecording(!keepRecordingOnTabSwitch)}
-          >
-            <span className="toggle-thumb" />
-          </button>
-        </div>
       </div>
 
       {error && <p className="error-text">{error}</p>}
 
       <div className="action-row">
-        {!isRecording ? (
+        {!isActive ? (
           <button className="btn btn-start" onClick={onStart}>
-            <span className="btn-icon">⏺</span> Start Recording
+            <span className="btn-icon">⏺</span> Start Session
           </button>
         ) : (
-          <button className="btn btn-stop" onClick={onStop}>
-            <span className="btn-icon recording-pulse">⏹</span> Stop Recording
+          <button className="btn btn-end" onClick={onEnd}>
+            <span className="btn-icon">⏹</span> End Session
           </button>
         )}
 
-        {isRecording && (
+        {sessionState === 'monitoring' && (
+          <div className="monitoring-indicator">
+            <span className="monitoring-dot" />
+            Monitoring — recording starts when you leave
+          </div>
+        )}
+
+        {sessionState === 'recording' && (
           <div className="recording-indicator">
             <span className="recording-dot" />
-            Recording in progress
+            Recording
           </div>
         )}
       </div>
