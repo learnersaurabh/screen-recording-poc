@@ -1,4 +1,5 @@
 import type { Recording } from '../hooks/useProctoringRecorder'
+import { PerformanceGraph } from './PerformanceGraph'
 
 interface Props {
   recordings: Recording[]
@@ -44,6 +45,9 @@ export function RecordingsList({ recordings, onRemove }: Props) {
             <div className="recording-meta">
               <span className="recording-timestamp">{formatDateTime(rec.startedAt)}</span>
               <span className="recording-duration">{formatDuration(rec.duration)}</span>
+              {rec.displaySurface === 'unknown' && (
+                <span className="surface-unknown-badge">⚠ Screen type unverified</span>
+              )}
             </div>
 
             <video
@@ -52,6 +56,8 @@ export function RecordingsList({ recordings, onRemove }: Props) {
               controls
               preload="metadata"
             />
+
+            <PerformanceGraph samples={rec.perfSamples} startedAt={rec.startedAt} />
 
             <div className="recording-actions">
               <button

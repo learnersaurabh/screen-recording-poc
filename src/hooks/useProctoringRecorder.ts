@@ -1,4 +1,4 @@
-import { useRef, useState, useCallback } from 'react'
+import { useRef, useState, useCallback, type MutableRefObject } from 'react'
 
 export type SessionState = 'idle' | 'monitoring' | 'recording'
 
@@ -18,6 +18,13 @@ export const QUALITY_PRESETS: QualityPreset[] = [
   { label: '480p / 15fps (Smallest)', fps: 15, width: 854, height: 480, bitrate: 800_000 },
 ]
 
+export interface PerfSample {
+  t: number
+  fps: number
+  heapPct: number
+  encodeKBps: number
+}
+
 export interface Recording {
   id: string
   blob: Blob
@@ -25,6 +32,8 @@ export interface Recording {
   mimeType: string
   startedAt: Date
   duration: number
+  displaySurface: 'monitor' | 'unknown'
+  perfSamples: PerfSample[]
 }
 
 function pickMimeType(): string {
@@ -38,8 +47,9 @@ function pickMimeType(): string {
   return candidates.find((t) => MediaRecorder.isTypeSupported(t)) ?? ''
 }
 
-
-export function useProctoringRecorder() {
+export function useProctoringRecorder(
+  perfMetricsRef?: MutableRefObject<{ fps: number; heapPct: number }>
+) {
   const [sessionState, setSessionState] = useState<SessionState>('idle')
   const [clips, setClips] = useState<Recording[]>([])
   const [selectedQuality, setSelectedQuality] = useState(0)
@@ -53,8 +63,12 @@ export function useProctoringRecorder() {
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const sessionStateRef = useRef<SessionState>('idle')
   const mimeTypeRef = useRef<string>('')
+  const displaySurfaceRef = useRef<'monitor' | 'unknown'>('unknown')
+  const encodeByteAccRef = useRef<number>(0)
+  const encodeRateTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const samplesRef = useRef<PerfSample[]>([])
+  const [encodeRateKBps, setEncodeRateKBps] = useState<number>(0)
 
-  // Keep ref in sync so event listeners always see current state
   const updateSessionState = (state: SessionState) => {
     sessionStateRef.current = state
     setSessionState(state)
@@ -63,6 +77,15 @@ export function useProctoringRecorder() {
   const finaliseClip = useCallback((addToList: (c: Recording) => void) => {
     const recorder = recorderRef.current
     if (!recorder || recorder.state === 'inactive') return
+
+    if (encodeRateTimerRef.current) {
+      clearInterval(encodeRateTimerRef.current)
+      encodeRateTimerRef.current = null
+      setEncodeRateKBps(0)
+    }
+
+    const capturedSamples = [...samplesRef.current]
+    samplesRef.current = []
 
     recorder.onstop = () => {
       const blob = new Blob(chunksRef.current, { type: mimeTypeRef.current || 'video/webm' })
@@ -76,7 +99,13 @@ export function useProctoringRecorder() {
       const id = crypto.randomUUID()
       const startedAt = clipStartRef.current ?? new Date()
 
-      addToList({ id, blob, url, mimeType: mimeTypeRef.current || 'video/webm', startedAt, duration })
+      addToList({
+        id, blob, url,
+        mimeType: mimeTypeRef.current || 'video/webm',
+        startedAt, duration,
+        displaySurface: displaySurfaceRef.current,
+        perfSamples: capturedSamples,
+      })
     }
 
     recorder.stop()
@@ -90,16 +119,31 @@ export function useProctoringRecorder() {
     })
 
     chunksRef.current = []
+    samplesRef.current = []
     clipStartRef.current = new Date()
     clipStartPerfRef.current = performance.now()
+    encodeByteAccRef.current = 0
 
     recorder.ondataavailable = (e) => {
-      if (e.data.size > 0) chunksRef.current.push(e.data)
+      if (e.data.size > 0) {
+        chunksRef.current.push(e.data)
+        encodeByteAccRef.current += e.data.size
+      }
     }
+
+    encodeRateTimerRef.current = setInterval(() => {
+      const kbps = encodeByteAccRef.current / 1024
+      encodeByteAccRef.current = 0
+      setEncodeRateKBps(kbps)
+
+      const t = Math.round((performance.now() - clipStartPerfRef.current) / 1000)
+      const { fps = 0, heapPct = 0 } = perfMetricsRef?.current ?? {}
+      samplesRef.current.push({ t, fps, heapPct, encodeKBps: kbps })
+    }, 1000)
 
     recorder.start(1000)
     recorderRef.current = recorder
-  }, [])
+  }, [perfMetricsRef])
 
   const handleUserLeft = useCallback(() => {
     if (sessionStateRef.current !== 'monitoring') return
@@ -144,7 +188,6 @@ export function useProctoringRecorder() {
     }
 
     const onBlur = () => scheduleUserLeft()
-
     const onFocus = () => {
       cancelDebounce()
       handleUserReturned()
@@ -171,10 +214,11 @@ export function useProctoringRecorder() {
     try {
       stream = await navigator.mediaDevices.getDisplayMedia({
         video: {
+          displaySurface: 'monitor',
           frameRate: { ideal: preset.fps, max: preset.fps },
           width: { ideal: preset.width, max: preset.width },
           height: { ideal: preset.height, max: preset.height },
-        },
+        } as MediaTrackConstraints,
         audio: true,
       })
     } catch (err) {
@@ -186,10 +230,27 @@ export function useProctoringRecorder() {
       return
     }
 
+    const track = stream.getVideoTracks()[0]
+    const settings = track.getSettings()
+    const ds = (settings as MediaTrackSettings & { displaySurface?: string }).displaySurface
+
+    if (ds !== undefined) {
+      if (ds !== 'monitor') {
+        stream.getTracks().forEach((t) => t.stop())
+        setError('Please share your entire screen, not a window or tab.')
+        return
+      }
+      displaySurfaceRef.current = 'monitor'
+    } else {
+      displaySurfaceRef.current =
+        settings.width === window.screen.width && settings.height === window.screen.height
+          ? 'monitor'
+          : 'unknown'
+    }
+
     mimeTypeRef.current = pickMimeType()
     streamRef.current = stream
 
-    // Handle user stopping the share via browser's native "Stop sharing" button
     stream.getVideoTracks()[0].onended = () => {
       cancelDebounce()
       if (sessionStateRef.current === 'recording') {
@@ -237,5 +298,6 @@ export function useProctoringRecorder() {
     startSession,
     endSession,
     removeClip,
+    encodeRateKBps,
   }
 }
